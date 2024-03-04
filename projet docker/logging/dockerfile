@@ -1,17 +1,16 @@
-FROM fluent/fluentd:v1.12-debian-1
-
+FROM fluent/fluentd:v1.16.3-2.0
 USER root
 
 RUN mkdir -p /fluentd/etc /fluentd/plugins
 
 COPY ./fluentd.conf /fluentd/etc/
 
-# Install system-level packages (net-tools) and Ruby gems
+
 RUN apt-get update && \
     apt-get install -y net-tools && \
     gem install faraday-net_http -v 3.0.2 && \
     gem install faraday -v 2.8.1 && \
-    fluent-gem install fluent-plugin-elasticsearch -v 5.4.3 
+    fluent-gem install fluent-plugin-elasticsearch 
 
 
 USER fluent
