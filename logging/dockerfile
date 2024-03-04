@@ -1,0 +1,8 @@
+FROM fluent/fluentd:v1.12-debian-1
+
+USER root
+RUN gem install fluent-plugin-elasticsearch --no-rdoc --no-ri
+RUN gem install fluent-plugin-datadog --no-rdoc --no-ri
+
+USER fluent
+CMD ["fluentd", "-c", "/fluentd/etc/fluent.conf"]
