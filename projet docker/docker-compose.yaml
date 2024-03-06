@@ -1,83 +1,83 @@
-version: '3'
+version: '3.8'
+
+volumes:
+  web-conf:
+  load-balancer-conf:
+  fluentd-conf:
+  elasticsearch-conf:
+  kibana-conf:
+  web-logs:
+  elasticsearch-data:
+  
+ 
 
 services:
-  app1:
-    image: projet_web:latest
+  web:
     build: ./app
     volumes:
-      - app1_logs:/app/logs
-    healthcheck:
-      test: ["CMD", "sh", "-c", "curl --fail http://localhost:8000/health > /app/logs/app1_health_check.log"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
+      - ./web:/usr/share/nginx/html
+      - web-conf:/etc/nginx
+      - web-logs:/var/log/nginx
+    networks:
+      - webnet
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 256M
 
-  app2:
-    image: projet_web:latest
-    build: ./app
+  load-balancer:
+    image: nginx:latest
     volumes:
-      - app2_logs:/app/logs
-    healthcheck:
-      test: ["CMD", "sh", "-c", "curl --fail http://localhost:8000/health > /app/logs/app2_health_check.log"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-
-  load_balancer:
-    image: projet_load_balancer:latest
-    build: ./load_balancer
-    volumes:
-      - "./nginx.conf:/etc/nginx/nginx.conf"
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - load-balancer-conf:/etc/load-balancer
+    networks:
+      - webnet
     ports:
       - "80:80"
-    healthcheck:
-      test: ["CMD", "sh", "-c", "curl --fail http://localhost/health > /app/logs/load_balancer_health_check.log"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      start_period: 30s
-  fluentd:
-    build: ./fluentd
-    volumes:
-      - ./fluentd/conf/fluentd.conf:/fluentd/etc/fluentd.conf
-    links:
-      - elasticsearch
     depends_on:
-      - elasticsearch
-    ports: 
-      - 24224:24224
-      - 24224:24224/udp
+      - web
+
+  fluentd:
+    image: fluent/fluentd:v1.14-1
+    volumes:
+      - fluentd-conf:/fluentd/etc
+      - web-logs:/var/log/nginx
+      - elasticsearch-conf:/usr/share/elasticsearch/config
+      - elasticsearch-data:/var/lib/elasticsearch
+    networks:
+      - webnet
+      - elasticsearch-net
+    
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.7.1
-    expose:
-      - 9200
-    ports:
-      - 9200:9200
-    environment:
-      - discovery.type=single-node
-      - xpack.security.enabled=false
-    volumes: 
-      - esdata:/usr/share/elasticsearch/data
+    volumes:
+      - elasticsearch-conf:/usr/share/elasticsearch/config
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    networks:
+      - elasticsearch-net
+    deploy:
+      resources:
+        limits:
+          cpus: '1'
+          memory: 2G
 
   kibana:
-    image: kibana:8.7.1
-    links: 
-      - elasticsearch
+    image: docker.elastic.co/kibana/kibana:8.7.1
+    volumes:
+      - kibana-conf:/usr/share/kibana/config
+    networks:
+      - elasticsearch-net
+    ports:
+      - "5601:5601"
     depends_on:
       - elasticsearch
-    ports:
-      - 5601:5601
-    environment:
-      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
-volumes:
-  app1_logs:
-  app2_logs:
-  esdata:
+
+
 
 networks:
-  default:
-    external: true
-    name: projetdocker_default
+  webnet:
+  elasticsearch-net:
+    driver: bridge
