@@ -8,8 +8,6 @@ volumes:
   kibana-conf:
   web-logs:
   elasticsearch-data:
-  
- 
 
 services:
   web:
@@ -42,22 +40,40 @@ services:
   fluentd:
     image: fluent/fluentd:v1.14-1
     volumes:
-      - fluentd-conf:/fluentd/etc
+      - ./fluentd.conf:/fluentd/etc/fluentd.conf
       - web-logs:/var/log/nginx
       - elasticsearch-conf:/usr/share/elasticsearch/config
-      - elasticsearch-data:/var/lib/elasticsearch
+      - elasticsearch-data:/usr/share/elasticsearch/data
     networks:
       - webnet
       - elasticsearch-net
-    
+    depends_on:
+      - web
+      - elasticsearch
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.7.1
     volumes:
-      - elasticsearch-conf:/usr/share/elasticsearch/config
       - elasticsearch-data:/usr/share/elasticsearch/data
     networks:
       - elasticsearch-net
+    environment:
+      - node.name=elasticsearch
+      - cluster.name=elasticsearch-docker-cluster
+      - discovery.type=single-node
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+      - network.host=0.0.0.0
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+      nofile:
+        soft: 65536
+        hard: 65536
+    ports:
+      - 9200:9200
+      - 9300:9300
     deploy:
       resources:
         limits:
@@ -68,14 +84,15 @@ services:
     image: docker.elastic.co/kibana/kibana:8.7.1
     volumes:
       - kibana-conf:/usr/share/kibana/config
+    restart: always
+    environment:
+      ELASTICSEARCH_URL: "http://elasticsearch:9200"
     networks:
       - elasticsearch-net
     ports:
       - "5601:5601"
     depends_on:
       - elasticsearch
-
-
 
 networks:
   webnet:
