@@ -8,6 +8,7 @@ volumes:
   kibana-conf:
   web-logs:
   elasticsearch-data:
+  logstash-conf:
 
 services:
   web:
@@ -16,8 +17,6 @@ services:
       - ./web:/usr/share/nginx/html
       - web-conf:/etc/nginx
       - web-logs:/var/log/nginx
-    networks:
-      - webnet
     deploy:
       replicas: 3
       resources:
@@ -30,23 +29,16 @@ services:
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
       - load-balancer-conf:/etc/load-balancer
-    networks:
-      - webnet
     ports:
       - "80:80"
     depends_on:
       - web
 
   fluentd:
-    image: fluent/fluentd:v1.14-1
+    build: ./fluentd
     volumes:
-      - ./fluentd.conf:/fluentd/etc/fluentd.conf
       - web-logs:/var/log/nginx
-      - elasticsearch-conf:/usr/share/elasticsearch/config
-      - elasticsearch-data:/usr/share/elasticsearch/data
-    networks:
-      - webnet
-      - elasticsearch-net
+      - fluentd-conf:/fluentd/etc  
     depends_on:
       - web
       - elasticsearch
@@ -55,8 +47,6 @@ services:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.7.1
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
-    networks:
-      - elasticsearch-net
     environment:
       - node.name=elasticsearch
       - cluster.name=elasticsearch-docker-cluster
@@ -74,27 +64,31 @@ services:
     ports:
       - 9200:9200
       - 9300:9300
-    deploy:
-      resources:
-        limits:
-          cpus: '1'
-          memory: 2G
+
 
   kibana:
     image: docker.elastic.co/kibana/kibana:8.7.1
     volumes:
-      - kibana-conf:/usr/share/kibana/config
+      - kibana-conf:/usr/share/kibana/config  
     restart: always
-    environment:
-      ELASTICSEARCH_URL: "http://elasticsearch:9200"
-    networks:
-      - elasticsearch-net
     ports:
       - "5601:5601"
     depends_on:
       - elasticsearch
+    
 
-networks:
-  webnet:
-  elasticsearch-net:
-    driver: bridge
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.7.1
+    user: root
+    volumes:
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+      - ./logstash/pipeline/logstash.conf:/usr/share/logstash/pipeline/logstash.conf:ro # Chemin relatif pour les fichiers de pipeline
+    environment:
+      - ELASTIC_USER=elastic
+      - ELASTIC_PASSWORD=test123
+      - ELASTIC_HOST=http://elasticsearch:9200
+    command: logstash -f /usr/share/logstash/pipeline/logstash.conf
+    ports:
+      - "5044:5044"
+    depends_on:
+      - elasticsearch
